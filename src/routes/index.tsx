@@ -212,5 +212,9 @@ function PhoneCell({ state }: { state?: PhoneState }) {
   if (state.status === "rate_limited") {
     return <Badge variant="destructive">Rate-limited</Badge>;
   }
-  return <Badge variant="outline">Unavailable</Badge>;
+  return (
+    <Badge variant="outline" title={state.error ?? "No phone returned"}>
+      {state.error ? "Error" : "Unavailable"}
+    </Badge>
+  );
 }
