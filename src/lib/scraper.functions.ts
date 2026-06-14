@@ -1,8 +1,24 @@
 import { createServerFn } from "@tanstack/react-start";
 import { runSearch, revealPhone, type Listing, type PhoneResult } from "./scraper.server";
 
-export type SearchResponse = { listings: Listing[]; phoneConcurrency: number };
-export type PhoneResponse = PhoneResult;
+export type SearchResponse =
+  | { ok: true; listings: Listing[]; phoneConcurrency: number }
+  | { ok: false; error: { code: string; message: string; missing?: string[] } };
+
+export type PhoneResponse =
+  | (PhoneResult & { ok: true })
+  | { ok: false; error: { code: string; message: string } };
+
+function describeError(e: unknown): { code: string; message: string; missing?: string[] } {
+  if (e && typeof e === "object") {
+    const rec = e as { code?: unknown; message?: unknown; missing?: unknown };
+    const code = typeof rec.code === "string" ? rec.code : "INTERNAL_ERROR";
+    const message = typeof rec.message === "string" ? rec.message : "Unexpected server error";
+    const missing = Array.isArray(rec.missing) ? (rec.missing.filter((x) => typeof x === "string") as string[]) : undefined;
+    return missing ? { code, message, missing } : { code, message };
+  }
+  return { code: "INTERNAL_ERROR", message: String(e) };
+}
 
 export const searchListings = createServerFn({ method: "POST" })
   .inputValidator((input: { query: string }) => {
@@ -13,7 +29,13 @@ export const searchListings = createServerFn({ method: "POST" })
     return { query: input.query.trim() };
   })
   .handler(async ({ data }): Promise<SearchResponse> => {
-    return runSearch(data.query);
+    try {
+      const r = await runSearch(data.query);
+      return { ok: true, ...r };
+    } catch (e) {
+      console.error("searchListings failed:", e);
+      return { ok: false, error: describeError(e) };
+    }
   });
 
 export const getPhone = createServerFn({ method: "POST" })
@@ -24,5 +46,11 @@ export const getPhone = createServerFn({ method: "POST" })
     return { id: input.id, adId: input.adId ?? null };
   })
   .handler(async ({ data }): Promise<PhoneResponse> => {
-    return revealPhone(data.id, data.adId);
+    try {
+      const r = await revealPhone(data.id, data.adId);
+      return { ok: true, ...r };
+    } catch (e) {
+      console.error("getPhone failed:", e);
+      return { ok: false, error: describeError(e) };
+    }
   });
