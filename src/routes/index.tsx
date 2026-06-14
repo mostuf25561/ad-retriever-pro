@@ -25,7 +25,7 @@ export const Route = createFileRoute("/")({
   component: Index,
 });
 
-type PhoneState = { status: "pending" | PhoneResult["status"]; phone?: string | null };
+type PhoneState = { status: "pending" | PhoneResult["status"]; phone?: string | null; error?: string };
 
 function Index() {
   const search = useServerFn(searchListings);
