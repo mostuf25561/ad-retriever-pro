@@ -6,6 +6,8 @@ export type ScraperConfig = {
   acceptLanguage: string;
   maxResults: number;
   phoneConcurrency: number;
+  loginEmail: string | null;
+  loginPassword: string | null;
 };
 
 function req(name: string): string {
@@ -22,6 +24,8 @@ function num(name: string, def: number): number {
 }
 
 export function getScraperConfig(): ScraperConfig {
+  const email = process.env.SCRAPER_LOGIN_EMAIL?.trim() || null;
+  const password = process.env.SCRAPER_LOGIN_PASSWORD ?? null;
   return {
     baseUrl: req("SCRAPER_BASE_URL").replace(/\/$/, ""),
     gwBaseUrl: req("SCRAPER_GW_BASE_URL").replace(/\/$/, ""),
@@ -29,5 +33,7 @@ export function getScraperConfig(): ScraperConfig {
     acceptLanguage: req("SCRAPER_ACCEPT_LANGUAGE"),
     maxResults: num("SCRAPER_MAX_RESULTS", 26),
     phoneConcurrency: num("SCRAPER_PHONE_CONCURRENCY", 4),
+    loginEmail: email,
+    loginPassword: password && password.length > 0 ? password : null,
   };
 }

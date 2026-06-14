@@ -19,6 +19,85 @@ export type PhoneResult = { phone: string | null; status: PhoneStatus };
 let cachedBuildId: { id: string; at: number } | null = null;
 const BUILD_ID_TTL_MS = 10 * 60 * 1000;
 
+// --- session cache ---------------------------------------------------------
+type Session = { cookie: string | null; bearer: string | null; at: number };
+let cachedSession: Session | null = null;
+let sessionInflight: Promise<Session> | null = null;
+const SESSION_TTL_MS = 30 * 60 * 1000;
+
+function parseSetCookies(setCookieHeader: string | null): string | null {
+  if (!setCookieHeader) return null;
+  // Workers' fetch returns Set-Cookie joined by ", " — split safely on cookie boundaries.
+  const parts = setCookieHeader.split(/,(?=\s*[A-Za-z0-9_\-]+=)/);
+  const pairs: string[] = [];
+  for (const p of parts) {
+    const first = p.split(";")[0]?.trim();
+    if (first && first.includes("=")) pairs.push(first);
+  }
+  return pairs.length ? pairs.join("; ") : null;
+}
+
+async function login(cfg: ScraperConfig): Promise<Session> {
+  const empty: Session = { cookie: null, bearer: null, at: Date.now() };
+  if (!cfg.loginEmail || !cfg.loginPassword) return empty;
+  try {
+    const res = await fetch(`${cfg.gwBaseUrl}/auth/login`, {
+      method: "POST",
+      headers: {
+        "User-Agent": cfg.userAgent,
+        "Accept-Language": cfg.acceptLanguage,
+        Accept: "application/json",
+        "Content-Type": "application/json",
+        Origin: cfg.baseUrl,
+        Referer: `${cfg.baseUrl}/`,
+      },
+      body: JSON.stringify({ email: cfg.loginEmail, password: cfg.loginPassword }),
+    });
+    if (!res.ok) {
+      console.error(`Login failed: ${res.status}`);
+      return empty;
+    }
+    const cookie = parseSetCookies(res.headers.get("set-cookie"));
+    let bearer: string | null = null;
+    try {
+      const json = (await res.clone().json()) as unknown;
+      bearer = findToken(json);
+    } catch {
+      // ignore non-json body
+    }
+    return { cookie, bearer, at: Date.now() };
+  } catch (e) {
+    console.error("Login error", e);
+    return empty;
+  }
+}
+
+function findToken(node: unknown): string | null {
+  if (!node || typeof node !== "object") return null;
+  const rec = node as Record<string, unknown>;
+  for (const [k, v] of Object.entries(rec)) {
+    if (typeof v === "string" && /token|jwt|access/i.test(k) && v.length > 20) return v;
+  }
+  for (const v of Object.values(rec)) {
+    if (v && typeof v === "object") {
+      const f = findToken(v);
+      if (f) return f;
+    }
+  }
+  return null;
+}
+
+async function getSession(cfg: ScraperConfig): Promise<Session> {
+  if (cachedSession && Date.now() - cachedSession.at < SESSION_TTL_MS) return cachedSession;
+  if (sessionInflight) return sessionInflight;
+  sessionInflight = login(cfg).then((s) => {
+    cachedSession = s;
+    sessionInflight = null;
+    return s;
+  });
+  return sessionInflight;
+}
+
 function buildHeaders(cfg: ScraperConfig, extra: Record<string, string> = {}): HeadersInit {
   return {
     "User-Agent": cfg.userAgent,
@@ -26,6 +105,22 @@ function buildHeaders(cfg: ScraperConfig, extra: Record<string, string> = {}): H
     Accept: "application/json,text/html,*/*",
     ...extra,
   };
+}
+
+async function buildAuthedHeaders(
+  cfg: ScraperConfig,
+  extra: Record<string, string> = {},
+): Promise<Record<string, string>> {
+  const session = await getSession(cfg);
+  const h: Record<string, string> = {
+    "User-Agent": cfg.userAgent,
+    "Accept-Language": cfg.acceptLanguage,
+    Accept: "application/json,text/html,*/*",
+    ...extra,
+  };
+  if (session.cookie) h.Cookie = session.cookie;
+  if (session.bearer) h.Authorization = `Bearer ${session.bearer}`;
+  return h;
 }
 
 function encodeQuery(q: string): string {
@@ -164,13 +259,17 @@ function deepFindPhone(node: unknown): string | null {
 
 async function tryEndpoint(cfg: ScraperConfig, url: string, itemId: string): Promise<PhoneResult | null> {
   try {
-    const res = await fetch(url, {
-      headers: buildHeaders(cfg, {
-        Origin: cfg.baseUrl,
-        Referer: `${cfg.baseUrl}/market/item/${itemId}`,
-        "x-requested-with": "XMLHttpRequest",
-      }),
+    const headers = await buildAuthedHeaders(cfg, {
+      Origin: cfg.baseUrl,
+      Referer: `${cfg.baseUrl}/market/item/${itemId}`,
+      "x-requested-with": "XMLHttpRequest",
     });
+    const res = await fetch(url, { headers });
+    if (res.status === 401) {
+      // Session expired — drop cache so next call re-logs in.
+      cachedSession = null;
+      return null;
+    }
     if (res.status === 429 || res.status === 403) {
       return { phone: null, status: "rate_limited" };
     }
@@ -204,12 +303,11 @@ export async function revealPhone(id: string, adId: string | null): Promise<Phon
   try {
     const buildId = await resolveBuildId(cfg, "a");
     const url = `${cfg.baseUrl}/market/_next/data/${buildId}/market/item/${encodeURIComponent(id)}.json`;
-    const res = await fetch(url, {
-      headers: buildHeaders(cfg, {
-        "x-nextjs-data": "1",
-        Referer: `${cfg.baseUrl}/market/item/${id}`,
-      }),
+    const headers = await buildAuthedHeaders(cfg, {
+      "x-nextjs-data": "1",
+      Referer: `${cfg.baseUrl}/market/item/${id}`,
     });
+    const res = await fetch(url, { headers });
     if (res.ok) {
       const json = (await res.json()) as unknown;
       const phone = deepFindPhone(json);
