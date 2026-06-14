@@ -47,11 +47,16 @@ function Index() {
     setPhones({});
     setRevealed(0);
 
-    let res: { listings: Listing[]; phoneConcurrency: number };
-    try {
-      res = await search({ data: { query } });
-    } catch (err) {
-      setError(err instanceof Error ? err.message : "Search failed");
+    const res = await search({ data: { query } }).catch((err: unknown) => ({
+      ok: false as const,
+      error: { code: "CLIENT_ERROR", message: err instanceof Error ? err.message : "Search failed" },
+    }));
+
+    if (!res.ok) {
+      const missing = "missing" in res.error && res.error.missing?.length
+        ? ` (missing: ${res.error.missing.join(", ")})`
+        : "";
+      setError(`${res.error.message}${missing}`);
       setPhase("idle");
       return;
     }
@@ -72,11 +77,14 @@ function Index() {
       while (queue.length) {
         const item = queue.shift();
         if (!item) break;
-        try {
-          const r = await phone({ data: { id: item.id, adId: item.adId } });
+        const r = await phone({ data: { id: item.id, adId: item.adId } }).catch((err: unknown) => ({
+          ok: false as const,
+          error: { code: "CLIENT_ERROR", message: err instanceof Error ? err.message : "Reveal failed" },
+        }));
+        if (r.ok) {
           setPhones((p) => ({ ...p, [item.id]: { status: r.status, phone: r.phone } }));
-        } catch {
-          setPhones((p) => ({ ...p, [item.id]: { status: "unavailable" } }));
+        } else {
+          setPhones((p) => ({ ...p, [item.id]: { status: "unavailable", error: r.error.message } }));
         }
         setRevealed((n) => n + 1);
       }
