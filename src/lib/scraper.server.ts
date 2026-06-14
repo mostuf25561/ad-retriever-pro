@@ -303,12 +303,11 @@ export async function revealPhone(id: string, adId: string | null): Promise<Phon
   try {
     const buildId = await resolveBuildId(cfg, "a");
     const url = `${cfg.baseUrl}/market/_next/data/${buildId}/market/item/${encodeURIComponent(id)}.json`;
-    const res = await fetch(url, {
-      headers: buildHeaders(cfg, {
-        "x-nextjs-data": "1",
-        Referer: `${cfg.baseUrl}/market/item/${id}`,
-      }),
+    const headers = await buildAuthedHeaders(cfg, {
+      "x-nextjs-data": "1",
+      Referer: `${cfg.baseUrl}/market/item/${id}`,
     });
+    const res = await fetch(url, { headers });
     if (res.ok) {
       const json = (await res.json()) as unknown;
       const phone = deepFindPhone(json);
