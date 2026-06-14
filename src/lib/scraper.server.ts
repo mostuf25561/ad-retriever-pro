@@ -259,13 +259,17 @@ function deepFindPhone(node: unknown): string | null {
 
 async function tryEndpoint(cfg: ScraperConfig, url: string, itemId: string): Promise<PhoneResult | null> {
   try {
-    const res = await fetch(url, {
-      headers: buildHeaders(cfg, {
-        Origin: cfg.baseUrl,
-        Referer: `${cfg.baseUrl}/market/item/${itemId}`,
-        "x-requested-with": "XMLHttpRequest",
-      }),
+    const headers = await buildAuthedHeaders(cfg, {
+      Origin: cfg.baseUrl,
+      Referer: `${cfg.baseUrl}/market/item/${itemId}`,
+      "x-requested-with": "XMLHttpRequest",
     });
+    const res = await fetch(url, { headers });
+    if (res.status === 401) {
+      // Session expired — drop cache so next call re-logs in.
+      cachedSession = null;
+      return null;
+    }
     if (res.status === 429 || res.status === 403) {
       return { phone: null, status: "rate_limited" };
     }
