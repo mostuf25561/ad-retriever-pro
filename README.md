@@ -1,56 +1,47 @@
-# Marketplace Seller Lookup
+# Puppeteer Scraper
 
-A small TanStack Start app that searches a marketplace's listings for a query, then attempts to reveal each seller's phone number in parallel.
+A Lovable app + a tiny local Node server that uses headless Chromium to fetch any URL and return its rendered screenshot and full HTML.
 
-The crawler is purpose-built for one specific Next.js-based marketplace, but no site identifier (domain, brand name) is committed to this repo — everything site-specific lives in environment variables.
+## Why a local server?
 
-## Strategy
+Lovable apps deploy to Cloudflare Workers, which can't run Puppeteer (no Chromium, no `child_process`). The Lovable UI just calls a small HTTP server that you run on your own machine.
 
-1. **Search.** The server fetches the marketplace's HTML search page, extracts the `buildId` from the embedded Next.js manifest (cached ~10 min), then calls the underlying `_next/data/<buildId>/search.json` endpoint to get structured listings without HTML parsing.
-2. **Reveal.** For each listing, the server tries the marketplace's gateway `contactInfo` endpoints in order, falling back to the item's next-data JSON. A simple regex/key scan extracts a phone-shaped string from whatever JSON comes back.
-3. **Optional login.** If `SCRAPER_LOGIN_EMAIL` + `SCRAPER_LOGIN_PASSWORD` are set, the server POSTs once to `${SCRAPER_GW_BASE_URL}/auth/login`, captures the response cookies and any bearer token, caches them for ~30 min, and attaches them to every reveal request. Authenticated reveals succeed dramatically more often than anonymous ones; on a 401 the session is dropped and re-acquired.
-4. **Concurrency.** Reveals run through a worker pool sized by `SCRAPER_PHONE_CONCURRENCY` so a single search doesn't burst-hit the marketplace.
-5. **Caching.** `buildId` and the login session are kept in-memory on the server, scoped to the worker process — no DB.
+## Setup
 
-## Configuration
+1. Copy `.env.example` to `.env` (defaults are fine):
+   ```sh
+   cp .env.example .env
+   ```
+2. Start the Puppeteer server in one terminal:
+   ```sh
+   bun run scrape:server
+   ```
+   It listens on `http://localhost:7070`. First run downloads Chromium (~150 MB).
+3. Open the Lovable preview, enter a URL, click **Fetch**.
 
-All site-identifying values live in a local `.env` file (gitignored). Copy `.env.example` to `.env` and fill in real values:
+## What you get
 
-```
-SCRAPER_BASE_URL=https://www.<site>            # site origin, no trailing slash
-SCRAPER_GW_BASE_URL=https://gw.<site>          # gateway origin used for contactInfo
-SCRAPER_USER_AGENT=Mozilla/5.0 ...             # browser-like UA
-SCRAPER_ACCEPT_LANGUAGE=he-IL,he;q=0.9,en;q=0.8
-SCRAPER_MAX_RESULTS=26
-SCRAPER_PHONE_CONCURRENCY=4
+- **Screenshot** — viewport or full page (toggle).
+- **HTML** — full rendered DOM, with a Copy button.
+- **Rendered** — the captured HTML loaded into a sandboxed iframe.
 
-# Optional — enables authenticated phone reveals
-SCRAPER_LOGIN_EMAIL=
-SCRAPER_LOGIN_PASSWORD=
-```
+## Files
 
-The `.env` file is auto-loaded by the server on first config read via Node's `process.loadEnvFile()`, so no `dotenv` package is needed in dev. In production, set these as real environment variables on your host.
+| File | What it does |
+| --- | --- |
+| `scripts/puppeteer-server.ts` | Local HTTP server. `POST /scrape { url, fullPage?, waitMs? }` → `{ html, screenshot, title, finalUrl }` |
+| `src/lib/puppeteer.functions.ts` | TanStack server fn that proxies to `PUPPETEER_URL` |
+| `src/routes/index.tsx` | UI: URL input + screenshot / HTML / rendered tabs |
 
-## Error handling
+## Env vars
 
-Server functions never throw raw 500s to the browser. Both `searchListings` and `getPhone` return a discriminated union: `{ ok: true, ... }` on success or `{ ok: false, error: { code, message, missing? } }` on failure. The UI renders:
+| Name | Default | Purpose |
+| --- | --- | --- |
+| `PUPPETEER_URL` | `http://localhost:7070` | Where the Lovable server fn calls Puppeteer |
+| `PORT` (server script) | `7070` | Port the Puppeteer script binds to |
 
-- Search errors as an inline message under the form (including `missing` env-var names when the server is unconfigured).
-- Per-row reveal errors as a hover-tooltip "Error" badge in the Phone column.
+## Troubleshooting
 
-This way both transport-level (network/RPC) and application-level (config, rate-limit, parser) failures surface to the user instead of vanishing into a blank screen.
-
-## Project layout
-
-```
-src/lib/scraper-config.server.ts   env reader; loads .env if present; throws ScraperConfigError with `missing` list
-src/lib/scraper.server.ts          buildId resolver, search fetcher, login/session, reveal chain
-src/lib/scraper.functions.ts       createServerFn endpoints with structured error envelopes
-src/routes/index.tsx               search form + results table + per-row reveal worker pool
-src/routes/api/open.$id.ts         302 redirect that constructs the item URL from server-side env
-```
-
-## Caveats
-
-- The target site actively blocks scrapers and rate-limits anonymous reveals — expect many "Unavailable" rows without login.
-- Scraping may breach the target site's Terms of Service. That's your responsibility.
+- **"Could not reach the local Puppeteer server"** — the script isn't running. Run `bun run scrape:server`.
+- **First request is slow** — Chromium is launching. Subsequent requests reuse the same browser.
+- **Site shows a captcha / challenge page** — Puppeteer hits a bot wall. Add `waitMs` from the UI to give JS more time, or use stealth plugins / a real residential proxy for hardened sites.
