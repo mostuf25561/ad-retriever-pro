@@ -1,220 +1,124 @@
 import { createFileRoute } from "@tanstack/react-router";
 import { useServerFn } from "@tanstack/react-start";
 import { useState } from "react";
-import { searchListings, getPhone } from "@/lib/scraper.functions";
-import type { Listing, PhoneResult } from "@/lib/scraper.server";
+import { scrapePage, type ScrapeResponse } from "@/lib/puppeteer.functions";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { Badge } from "@/components/ui/badge";
-import {
-  Table,
-  TableBody,
-  TableCell,
-  TableHead,
-  TableHeader,
-  TableRow,
-} from "@/components/ui/table";
+import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
 
 export const Route = createFileRoute("/")({
   head: () => ({
     meta: [
-      { title: "Marketplace Seller Lookup" },
-      { name: "description", content: "Search a marketplace and reveal seller phone numbers." },
+      { title: "Puppeteer Scraper" },
+      { name: "description", content: "Fetch a page with headless Chromium and view its screenshot + HTML." },
     ],
   }),
   component: Index,
 });
 
-type PhoneState = { status: "pending" | PhoneResult["status"]; phone?: string | null; error?: string };
-
 function Index() {
-  const search = useServerFn(searchListings);
-  const phone = useServerFn(getPhone);
-
-  const [query, setQuery] = useState("");
-  const [phase, setPhase] = useState<"idle" | "searching" | "revealing" | "done">("idle");
-  const [listings, setListings] = useState<Listing[]>([]);
-  const [phones, setPhones] = useState<Record<string, PhoneState>>({});
-  const [revealed, setRevealed] = useState(0);
-  const [error, setError] = useState<string | null>(null);
+  const scrape = useServerFn(scrapePage);
+  const [url, setUrl] = useState("https://example.com");
+  const [fullPage, setFullPage] = useState(false);
+  const [loading, setLoading] = useState(false);
+  const [result, setResult] = useState<ScrapeResponse | null>(null);
 
   async function onSubmit(e: React.FormEvent) {
     e.preventDefault();
-    if (!query.trim()) return;
-    setError(null);
-    setPhase("searching");
-    setListings([]);
-    setPhones({});
-    setRevealed(0);
-
-    const res = await search({ data: { query } }).catch((err: unknown) => ({
-      ok: false as const,
-      error: { code: "CLIENT_ERROR", message: err instanceof Error ? err.message : "Search failed" },
-    }));
-
-    if (!res.ok) {
-      const missing = "missing" in res.error && res.error.missing?.length
-        ? ` (missing: ${res.error.missing.join(", ")})`
-        : "";
-      setError(`${res.error.message}${missing}`);
-      setPhase("idle");
-      return;
-    }
-
-    setListings(res.listings);
-    const initial: Record<string, PhoneState> = {};
-    for (const l of res.listings) initial[l.id] = { status: "pending" };
-    setPhones(initial);
-
-    if (res.listings.length === 0) {
-      setPhase("done");
-      return;
-    }
-
-    setPhase("revealing");
-    const queue = [...res.listings];
-    const workers = Array.from({ length: Math.min(res.phoneConcurrency, queue.length) }, async () => {
-      while (queue.length) {
-        const item = queue.shift();
-        if (!item) break;
-        const r = await phone({ data: { id: item.id, adId: item.adId } }).catch((err: unknown) => ({
-          ok: false as const,
-          error: { code: "CLIENT_ERROR", message: err instanceof Error ? err.message : "Reveal failed" },
-        }));
-        if (r.ok) {
-          setPhones((p) => ({ ...p, [item.id]: { status: r.status, phone: r.phone } }));
-        } else {
-          setPhones((p) => ({ ...p, [item.id]: { status: "unavailable", error: r.error.message } }));
-        }
-        setRevealed((n) => n + 1);
-      }
-    });
-    await Promise.all(workers);
-    setPhase("done");
+    if (!url.trim()) return;
+    setLoading(true);
+    setResult(null);
+    const res = await scrape({ data: { url, fullPage } }).catch(
+      (err: unknown): ScrapeResponse => ({
+        ok: false,
+        error: { code: "CLIENT_ERROR", message: err instanceof Error ? err.message : "Request failed" },
+      }),
+    );
+    setResult(res);
+    setLoading(false);
   }
 
   return (
     <div className="min-h-screen bg-background px-4 py-10">
-      <div className="mx-auto max-w-6xl">
-        <h1 className="text-2xl font-semibold tracking-tight">Marketplace Seller Lookup</h1>
+      <div className="mx-auto max-w-5xl">
+        <h1 className="text-2xl font-semibold tracking-tight">Puppeteer Scraper</h1>
         <p className="mt-1 text-sm text-muted-foreground">
-          Enter a search query. We collect listings, then try to reveal each seller's phone.
+          Fetches a URL through a local headless Chromium. Run <code className="rounded bg-muted px-1">bun run scrape:server</code> first.
         </p>
 
-        <form onSubmit={onSubmit} className="mt-6 flex gap-2">
+        <form onSubmit={onSubmit} className="mt-6 flex flex-wrap gap-2">
           <Input
-            value={query}
-            onChange={(e) => setQuery(e.target.value)}
-            placeholder="e.g. PS4 PRO"
-            disabled={phase === "searching" || phase === "revealing"}
+            value={url}
+            onChange={(e) => setUrl(e.target.value)}
+            placeholder="https://example.com"
+            className="min-w-[280px] flex-1"
+            disabled={loading}
           />
-          <Button type="submit" disabled={phase === "searching" || phase === "revealing"}>
-            {phase === "searching" ? "Searching…" : "Search"}
+          <label className="flex items-center gap-2 text-sm text-muted-foreground">
+            <input
+              type="checkbox"
+              checked={fullPage}
+              onChange={(e) => setFullPage(e.target.checked)}
+              disabled={loading}
+            />
+            Full page
+          </label>
+          <Button type="submit" disabled={loading}>
+            {loading ? "Fetching…" : "Fetch"}
           </Button>
         </form>
 
-        {error && (
-          <p className="mt-4 text-sm text-destructive">{error}</p>
+        {result && !result.ok && (
+          <div className="mt-6 rounded-md border border-destructive/40 bg-destructive/5 p-4 text-sm">
+            <p className="font-medium text-destructive">{result.error.code}</p>
+            <p className="mt-1 text-destructive/90">{result.error.message}</p>
+          </div>
         )}
 
-        {phase === "revealing" && (
-          <p className="mt-4 text-sm text-muted-foreground">
-            Revealing phones ({revealed}/{listings.length})…
-          </p>
-        )}
-        {phase === "done" && listings.length > 0 && (
-          <p className="mt-4 text-sm text-muted-foreground">
-            Done — {listings.length} listings, {revealed} phone attempts.
-          </p>
-        )}
-        {phase === "done" && listings.length === 0 && (
-          <p className="mt-4 text-sm text-muted-foreground">No listings found.</p>
-        )}
-
-        {listings.length > 0 && (
-          <div className="mt-6 rounded-md border overflow-x-auto">
-            <Table>
-              <TableHeader>
-                <TableRow>
-                  <TableHead className="w-16"></TableHead>
-                  <TableHead>Title</TableHead>
-                  <TableHead>Price</TableHead>
-                  <TableHead>City</TableHead>
-                  <TableHead>Condition</TableHead>
-                  <TableHead>Seller ID</TableHead>
-                  <TableHead>Phone</TableHead>
-                  <TableHead>Ad</TableHead>
-                </TableRow>
-              </TableHeader>
-              <TableBody>
-                {listings.map((l) => {
-                  const p = phones[l.id];
-                  return (
-                    <TableRow key={l.id}>
-                      <TableCell>
-                        {l.image ? (
-                          <img
-                            src={l.image}
-                            alt=""
-                            className="h-10 w-10 rounded object-cover"
-                            loading="lazy"
-                          />
-                        ) : null}
-                      </TableCell>
-                      <TableCell dir="auto" className="max-w-[260px] truncate" title={l.title}>
-                        {l.title}
-                      </TableCell>
-                      <TableCell>{l.price != null ? `₪${l.price.toLocaleString()}` : "—"}</TableCell>
-                      <TableCell dir="auto">{l.city ?? "—"}</TableCell>
-                      <TableCell dir="auto">{l.condition ?? "—"}</TableCell>
-                      <TableCell className="font-mono text-xs">{l.id}</TableCell>
-                      <TableCell>
-                        <PhoneCell state={p} />
-                      </TableCell>
-                      <TableCell>
-                        <a
-                          href={`/market/item/${l.id}`}
-                          onClick={(e) => {
-                            e.preventDefault();
-                            window.open(buildAdUrl(l.id), "_blank", "noopener,noreferrer");
-                          }}
-                          className="text-sm underline text-primary"
-                        >
-                          Open
-                        </a>
-                      </TableCell>
-                    </TableRow>
-                  );
-                })}
-              </TableBody>
-            </Table>
+        {result && result.ok && (
+          <div className="mt-6 space-y-2">
+            <div className="text-sm text-muted-foreground">
+              <span className="font-medium text-foreground">{result.title || "(no title)"}</span>{" "}
+              — <a className="underline" href={result.finalUrl} target="_blank" rel="noreferrer">{result.finalUrl}</a>
+            </div>
+            <Tabs defaultValue="screenshot">
+              <TabsList>
+                <TabsTrigger value="screenshot">Screenshot</TabsTrigger>
+                <TabsTrigger value="html">HTML</TabsTrigger>
+                <TabsTrigger value="rendered">Rendered</TabsTrigger>
+              </TabsList>
+              <TabsContent value="screenshot" className="mt-4">
+                <div className="overflow-auto rounded-md border bg-muted/30 p-2 max-h-[70vh]">
+                  <img src={result.screenshot} alt="Page screenshot" className="block max-w-full" />
+                </div>
+              </TabsContent>
+              <TabsContent value="html" className="mt-4">
+                <div className="mb-2 flex justify-end">
+                  <Button
+                    size="sm"
+                    variant="secondary"
+                    type="button"
+                    onClick={() => navigator.clipboard.writeText(result.html)}
+                  >
+                    Copy HTML
+                  </Button>
+                </div>
+                <pre className="max-h-[70vh] overflow-auto rounded-md border bg-muted/30 p-3 text-xs leading-relaxed">
+                  {result.html}
+                </pre>
+              </TabsContent>
+              <TabsContent value="rendered" className="mt-4">
+                <iframe
+                  title="Rendered HTML"
+                  srcDoc={result.html}
+                  sandbox=""
+                  className="h-[70vh] w-full rounded-md border bg-white"
+                />
+              </TabsContent>
+            </Tabs>
           </div>
         )}
       </div>
     </div>
-  );
-}
-
-function buildAdUrl(id: string): string {
-  // Derive the ad URL from the env-provided origin at runtime via the search response would be ideal,
-  // but for a simple link we just reuse the same path shape against the configured origin known to the server.
-  // Since the client doesn't have direct env access, we proxy through a relative redirect handled by the browser.
-  return `/api/open/${encodeURIComponent(id)}`;
-}
-
-function PhoneCell({ state }: { state?: PhoneState }) {
-  if (!state || state.status === "pending") {
-    return <Badge variant="secondary">Pending…</Badge>;
-  }
-  if (state.status === "revealed" && state.phone) {
-    return <span className="font-mono text-sm">{state.phone}</span>;
-  }
-  if (state.status === "rate_limited") {
-    return <Badge variant="destructive">Rate-limited</Badge>;
-  }
-  return (
-    <Badge variant="outline" title={state.error ?? "No phone returned"}>
-      {state.error ? "Error" : "Unavailable"}
-    </Badge>
   );
 }
