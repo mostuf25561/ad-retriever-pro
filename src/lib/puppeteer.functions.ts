@@ -7,6 +7,7 @@ export type ScrapeResponse =
       screenshot: string;
       title: string;
       finalUrl: string;
+      items: string[];
     }
   | { ok: false; error: { code: string; message: string } };
 
@@ -51,8 +52,9 @@ export const scrapePage = createServerFn({ method: "POST" })
         screenshot: string;
         title: string;
         finalUrl: string;
+        items?: string[];
       };
-      return { ok: true, ...json };
+      return { ok: true, html: json.html, screenshot: json.screenshot, title: json.title, finalUrl: json.finalUrl, items: json.items ?? [] };
     } catch (e) {
       const message = e instanceof Error ? e.message : String(e);
       return {

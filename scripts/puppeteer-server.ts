@@ -70,11 +70,19 @@ async function handleScrape(payload: { url: string; fullPage?: boolean; waitMs?:
       page.title().catch(() => ""),
       Promise.resolve(page.url()),
     ]);
+    // Extract item IDs from href patterns
+    const itemIds: string[] = [];
+    const regex = /\/market\/item\/(\d+)\??.*?/g;
+    let match;
+    while ((match = regex.exec(html)) !== null) {
+      itemIds.push(match[1]);
+    }
     return {
       html,
       screenshot: `data:image/png;base64,${screenshot}`,
       title,
       finalUrl,
+      items: itemIds,
     };
   } finally {
     await page.close().catch(() => {});

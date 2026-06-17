@@ -45,3 +45,27 @@ Lovable apps deploy to Cloudflare Workers, which can't run Puppeteer (no Chromiu
 - **"Could not reach the local Puppeteer server"** — the script isn't running. Run `bun run scrape:server`.
 - **First request is slow** — Chromium is launching. Subsequent requests reuse the same browser.
 - **Site shows a captcha / challenge page** — Puppeteer hits a bot wall. Add `waitMs` from the UI to give JS more time, or use stealth plugins / a real residential proxy for hardened sites.
+
+
+
+TODOS:
+---------
+0. plugins folder should contains plugins such as yad2.plugin.ts where dedicated flows should be located
+
+1. add debug mode toggle which is on by default and reflect its status on the url params (utilize configuration file )
+
+2. expose full client/server logs (when debug mode is activated)
+
+3. UI: first control: select plugin (currently available: yad2)
+
+4. second control: user input query (the ?q=XXX+YYY )
+
+5. themes support: dark/light/blue
+
+6. dir structure: 
+- plugin directory and sub-directory for each plugin. i.e: plugins/yad2/README.md
+
+PLUGIN DIRECTORY
+----------------
+
+plugins/yad2.ts:  s
