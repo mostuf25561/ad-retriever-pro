@@ -31,7 +31,33 @@ Lovable apps deploy to Cloudflare Workers, which can't run Puppeteer (no Chromiu
 | --- | --- |
 | `scripts/puppeteer-server.ts` | Local HTTP server. `POST /scrape { url, fullPage?, waitMs? }` → `{ html, screenshot, title, finalUrl }` |
 | `src/lib/puppeteer.functions.ts` | TanStack server fn that proxies to `PUPPETEER_URL` |
-| `src/routes/index.tsx` | UI: URL input + screenshot / HTML / rendered tabs |
+| `src/lib/proxy-fetch.functions.ts` | Generic server-side HTTP GET used by plugins to call JSON APIs (bypasses CORS, forwards realistic headers) |
+| `src/lib/config.ts` | App config (debug, theme) — synced to `?debug=…&theme=…` URL params |
+| `src/lib/logger.ts` | Client+server log bus shown in the UI when debug is on |
+| `src/plugins/index.ts` | Plugin registry |
+| `src/plugins/types.ts` | `ScraperPlugin` contract |
+| `src/plugins/yad2/yad2.plugin.ts` | Yad2 plugin: landing URL, listings JSON API, item phone API, item detail HTML parser |
+| `plugins/yad2/README.md` | Yad2 API reference notes (endpoints, payload shapes, selectors) |
+| `src/routes/index.tsx` | UI: plugin select, query input, debug toggle, theme switcher, flows, logs panel |
+
+## Plugin system
+
+Each plugin lives in `src/plugins/<id>/` and exports a `ScraperPlugin`:
+
+- `buildSearchUrl(q)` — landing HTML URL for puppeteer
+- `buildListingsApiUrl(q)` — JSON listings endpoint (called server-side)
+- `buildItemDetailUrl(id)` / `buildPhoneApiUrl(id)` — per-item endpoints
+- `extractIds(text)` — pull IDs from HTML or JSON
+- `parseItemDetail(html)` — extract structured fields from an item page
+- `flows[]` — ordered, dependency-aware steps the UI exposes as buttons
+
+The Yad2 plugin includes four flows: **Load landing HTML**, **Fetch listings JSON (API)**, **Extract IDs**, **Fetch phone + details for each ID**.
+
+## Debug mode
+
+On by default. Mirrored in the URL as `?debug=1|0` and `?theme=light|dark|blue`. Toggle from the header.
+
+When debug is on, the **Logs** panel captures every `console.*` call on the client and every server-fn outcome (with status codes + payload sizes). Use the **Copy all** button to grab the full transcript.
 
 ## Env vars
 
@@ -39,33 +65,3 @@ Lovable apps deploy to Cloudflare Workers, which can't run Puppeteer (no Chromiu
 | --- | --- | --- |
 | `PUPPETEER_URL` | `http://localhost:7070` | Where the Lovable server fn calls Puppeteer |
 | `PORT` (server script) | `7070` | Port the Puppeteer script binds to |
-
-## Troubleshooting
-
-- **"Could not reach the local Puppeteer server"** — the script isn't running. Run `bun run scrape:server`.
-- **First request is slow** — Chromium is launching. Subsequent requests reuse the same browser.
-- **Site shows a captcha / challenge page** — Puppeteer hits a bot wall. Add `waitMs` from the UI to give JS more time, or use stealth plugins / a real residential proxy for hardened sites.
-
-
-
-TODOS:
----------
-0. plugins folder should contains plugins such as yad2.plugin.ts where dedicated flows should be located
-
-1. add debug mode toggle which is on by default and reflect its status on the url params (utilize configuration file )
-
-2. expose full client/server logs (when debug mode is activated)
-
-3. UI: first control: select plugin (currently available: yad2)
-
-4. second control: user input query (the ?q=XXX+YYY )
-
-5. themes support: dark/light/blue
-
-6. dir structure: 
-- plugin directory and sub-directory for each plugin. i.e: plugins/yad2/README.md
-
-PLUGIN DIRECTORY
-----------------
-
-plugins/yad2.ts:  s
