@@ -1,7 +1,7 @@
 import { createFileRoute } from "@tanstack/react-router";
 import { useServerFn } from "@tanstack/react-start";
 import { useEffect, useMemo, useState } from "react";
-import { scrapePage, type ScrapeResponse } from "@/lib/puppeteer.functions";
+import { loginPage, scrapePage, type LoginResponse, type ScrapeResponse } from "@/lib/puppeteer.functions";
 import { proxyFetch } from "@/lib/proxy-fetch.functions";
 import { plugins, DEFAULT_PLUGIN_ID, type PluginFlow } from "@/plugins";
 import {
@@ -50,8 +50,11 @@ type DetailRow = {
   detailStatus: "ok" | "fail";
 };
 
+type PageResponse = ScrapeResponse | LoginResponse;
+
 function Index() {
   const scrape = useServerFn(scrapePage);
+  const login = useServerFn(loginPage);
   const proxy = useServerFn(proxyFetch);
 
   // ---- config (debug + theme) synced to URL ----
@@ -90,7 +93,7 @@ function Index() {
   );
   const [fullPage, setFullPage] = useState(false);
   const [loading, setLoading] = useState(false);
-  const [result, setResult] = useState<ScrapeResponse | null>(null);
+  const [result, setResult] = useState<PageResponse | null>(null);
   const [rawHtml, setRawHtml] = useState("");
   const [uploadedFileName, setUploadedFileName] = useState<string | null>(null);
   const [extractedIds, setExtractedIds] = useState<string[]>([]);
@@ -191,6 +194,42 @@ function Index() {
     setLoading(false);
   }
 
+  async function loginToSite() {
+    if (!selectedPlugin.supportsLogin || !selectedPlugin.loginSelectors || !selectedPlugin.buildLoginUrl) return;
+    setLoading(true);
+    setResult(null);
+    pushLog({ source: "client", level: "info", message: `login ${selectedPlugin.name}` });
+    const res = await login({
+      data: {
+        loginUrl: selectedPlugin.buildLoginUrl(),
+        selectors: selectedPlugin.loginSelectors,
+      },
+    }).catch((err: unknown): LoginResponse => ({
+      ok: false,
+      error: {
+        code: "CLIENT_ERROR",
+        message: err instanceof Error ? err.message : "Request failed",
+      },
+    }));
+
+    setResult(res);
+    if (res.ok) {
+      markComplete("login");
+      pushLog({
+        source: "server",
+        level: res.success ? "info" : "warn",
+        message: `login ${res.loggedIn ? "succeeded" : "failed"}`,
+      });
+    } else {
+      pushLog({
+        source: "server",
+        level: "error",
+        message: `login failed: ${res.error.code} ${res.error.message}`,
+      });
+    }
+    setLoading(false);
+  }
+
   async function handleHtmlUpload(file: File) {
     const text = await file.text();
     setUploadedFileName(file.name);
@@ -275,9 +314,10 @@ function Index() {
   }
 
   function isFlowEnabled(f: PluginFlow) {
-    if (f.action === "extractIds") return !!result?.ok;
+    if (f.action === "extractIds") return !!result?.ok || !!rawHtml.trim();
     if (f.action === "fetchDetailsForIds") return extractedIds.length > 0;
-    return f.dependsOn.every((dep) => completedFlows.includes(dep));
+    if (f.action === "login") return selectedPlugin.supportsLogin === true;
+    return true;
   }
 
   async function runFlow(flowId: string) {
@@ -286,6 +326,8 @@ function Index() {
     switch (f.action) {
       case "loadLandingHtml":
         return fetchLandingHtml();
+      case "login":
+        return loginToSite();
       case "fetchListingsJson":
         return fetchListingsJson();
       case "extractIds":

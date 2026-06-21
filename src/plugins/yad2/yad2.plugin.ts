@@ -35,11 +35,19 @@ export const yad2Plugin: ScraperPlugin = {
   defaultQuery: "ps4 pro",
   supportsQuery: true,
   supportsRawHtml: true,
+  supportsLogin: true,
   buildSearchUrl: (q) => `${LANDING_BASE}?q=${encodeQuery(q)}`,
   buildListingsApiUrl: (q, page = 1) =>
     `${GW_LISTINGS}?itemsPerPage=100&q=${encodeQuery(q)}&pageNumber=${page}`,
   buildItemDetailUrl: (id) => `${ITEM_BASE}/${id}`,
   buildPhoneApiUrl: (id) => `${GW_PHONE}/${id}/customer`,
+  buildLoginUrl: () => "https://www.yad2.co.il/market/login",
+  loginSelectors: {
+    email: "[data-testid='text-field-email']",
+    password: "[data-testid='text-field-password']",
+    submit: "[type='submit']",
+    success: "[data-testid='success-indicator']",
+  },
   extractIds: (text) => {
     const ids = new Set<string>();
     const re = /\/market\/item\/(\d+)/g;
@@ -84,6 +92,13 @@ export const yad2Plugin: ScraperPlugin = {
       action: "loadLandingHtml",
     },
     {
+      id: "login",
+      name: "Login to Yad2",
+      description: "Authenticate with Yad2 before fetching search results.",
+      dependsOn: [],
+      action: "login",
+    },
+    {
       id: "fetchListingsJson",
       name: "Fetch listings JSON (API)",
       description: "Call gw.yad2.co.il recommerce-feed/search and return JSON.",
@@ -101,7 +116,7 @@ export const yad2Plugin: ScraperPlugin = {
       id: "fetchDetailsForIds",
       name: "Fetch phone + details for each ID",
       description: "For every extracted ID, fetch the phone API and the item page.",
-      dependsOn: ["extractAllIds"],
+      dependsOn: [],
       action: "fetchDetailsForIds",
     },
   ],

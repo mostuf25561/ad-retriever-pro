@@ -1,0 +1,7 @@
+{
+  "status": 500,
+  "ok": false,
+  "body": {
+    "error": "Waiting for selector `[data-testid='text-field-email']` failed"
+  }
+}

@@ -1,0 +1,214 @@
+{
+  "openapi": "3.1.0",
+  "info": {
+    "title": "Local Puppeteer Server",
+    "version": "1.0.0",
+    "description": "Local Puppeteer automation server for scraping and login flows used by ad-retriever-pro."
+  },
+  "servers": [
+    {
+      "url": "http://localhost:7070"
+    }
+  ],
+  "paths": {
+    "/health": {
+      "get": {
+        "summary": "Health check",
+        "responses": {
+          "200": {
+            "description": "Server is healthy",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HealthResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/scrape": {
+      "post": {
+        "summary": "Render a page and return HTML plus screenshot",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ScrapeRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Scrape result",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ScrapeResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid request payload",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Internal server error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/login": {
+      "post": {
+        "summary": "Automate a login flow with Puppeteer",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/LoginRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Login result",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LoginResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid request payload",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Internal server error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+  },
+  "components": {
+    "schemas": {
+      "HealthResponse": {
+        "type": "object",
+        "properties": {
+          "ok": {
+            "type": "boolean"
+          }
+        },
+        "required": ["ok"]
+      },
+      "ScrapeRequest": {
+        "type": "object",
+        "properties": {
+          "url": {
+            "type": "string",
+            "format": "uri"
+          },
+          "fullPage": {
+            "type": "boolean"
+          },
+          "waitMs": {
+            "type": "integer",
+            "minimum": 0
+          }
+        },
+        "required": ["url"]
+      },
+      "ScrapeResponse": {
+        "type": "object",
+        "properties": {
+          "html": { "type": "string" },
+          "screenshot": { "type": "string" },
+          "title": { "type": "string" },
+          "finalUrl": { "type": "string" },
+          "items": {
+            "type": "array",
+            "items": { "type": "string" }
+          }
+        },
+        "required": ["html", "screenshot", "title", "finalUrl", "items"]
+      },
+      "LoginSelectors": {
+        "type": "object",
+        "properties": {
+          "profileButton": { "type": "string" },
+          "email": { "type": "string" },
+          "password": { "type": "string" },
+          "submit": { "type": "string" },
+          "success": { "type": "string" }
+        },
+        "required": ["email", "password", "submit"]
+      },
+      "LoginRequest": {
+        "type": "object",
+        "properties": {
+          "loginUrl": { "type": "string", "format": "uri" },
+          "login_url": { "type": "string", "format": "uri" },
+          "user": { "type": "string" },
+          "password": { "type": "string" },
+          "selectors": {
+            "$ref": "#/components/schemas/LoginSelectors"
+          },
+          "waitMs": { "type": "integer", "minimum": 0 }
+        },
+        "required": ["selectors"]
+      },
+      "LoginResponse": {
+        "type": "object",
+        "properties": {
+          "html": { "type": "string" },
+          "screenshot": { "type": "string" },
+          "title": { "type": "string" },
+          "finalUrl": { "type": "string" },
+          "success": { "type": "boolean" },
+          "loggedIn": { "type": "boolean" }
+        },
+        "required": ["html", "screenshot", "title", "finalUrl", "success", "loggedIn"]
+      },
+      "ErrorResponse": {
+        "type": "object",
+        "properties": {
+          "error": { "type": "string" }
+        },
+        "required": ["error"]
+      }
+    }
+  }
+}

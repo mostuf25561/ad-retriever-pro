@@ -5,9 +5,18 @@
  */
 export type FlowAction =
   | "loadLandingHtml"
+  | "login"
   | "extractIds"
   | "fetchListingsJson"
   | "fetchDetailsForIds";
+
+export type LoginSelectors = {
+  profileButton?: string;
+  email: string;
+  password: string;
+  submit: string;
+  success?: string;
+};
 
 export type PluginFlow = {
   id: string;
@@ -24,6 +33,7 @@ export type ScraperPlugin = {
   defaultQuery?: string;
   supportsQuery: boolean;
   supportsRawHtml: boolean;
+  supportsLogin?: boolean;
   /** Build a URL suitable for puppeteer to load (HTML landing page). */
   buildSearchUrl?: (query: string) => string;
   /** Build a URL that returns JSON listings (raw API). */
@@ -32,6 +42,10 @@ export type ScraperPlugin = {
   buildItemDetailUrl?: (id: string) => string;
   /** Build a URL that returns the per-item phone JSON. */
   buildPhoneApiUrl?: (id: string) => string;
+  /** Build a URL that returns the login page. */
+  buildLoginUrl?: () => string;
+  /** Login selectors for the plugin's login flow. */
+  loginSelectors?: LoginSelectors;
   /** Extract IDs from either HTML or a JSON string. */
   extractIds?: (text: string) => string[];
   /** Parse the per-item detail HTML into structured fields. */

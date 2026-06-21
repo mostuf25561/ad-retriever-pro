@@ -38,6 +38,7 @@ Lovable apps deploy to Cloudflare Workers, which can't run Puppeteer (no Chromiu
 | `src/plugins/types.ts` | `ScraperPlugin` contract |
 | `src/plugins/yad2/yad2.plugin.ts` | Yad2 plugin: landing URL, listings JSON API, item phone API, item detail HTML parser |
 | `plugins/yad2/README.md` | Yad2 API reference notes (endpoints, payload shapes, selectors) |
+| `openapi.json` | OpenAPI spec for the local Puppeteer server |
 | `src/routes/index.tsx` | UI: plugin select, query input, debug toggle, theme switcher, flows, logs panel |
 
 ## Plugin system
@@ -58,6 +59,16 @@ The Yad2 plugin includes four flows: **Load landing HTML**, **Fetch listings JSO
 On by default. Mirrored in the URL as `?debug=1|0` and `?theme=light|dark|blue`. Toggle from the header.
 
 When debug is on, the **Logs** panel captures every `console.*` call on the client and every server-fn outcome (with status codes + payload sizes). Use the **Copy all** button to grab the full transcript.
+
+## Local API docs
+
+The Puppeteer server now exposes an OpenAPI document at `http://localhost:7070/openapi.json` and a Swagger UI viewer at `http://localhost:7070/api-docs`.
+
+Example in Swagger or Postman:
+
+- `GET http://localhost:7070/api-docs`
+- `GET http://localhost:7070/openapi.json`
+- `POST http://localhost:7070/login`
 
 ## Env vars
 

@@ -1,0 +1,8 @@
+{
+  "selectors": {
+    "email": "[data-testid='text-field-email']",
+    "password": "[data-testid='text-field-password']",
+    "submit": "[type='submit']",
+    "success": "[data-testid='success-indicator']"
+  }
+}
